@@ -20,8 +20,6 @@ arrives only after you have seen the version number and asked for it.
 
 ## Screenshots
 
-> These are the file names this README references; drop the images into the repository root.
-
 **Plugins → dsh-rea-agents**: version, install state and the actions that move it, on the plugin's own
 card.
 
