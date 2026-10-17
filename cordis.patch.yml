@@ -1,0 +1,60 @@
+# dsh-rea-agents bundle patch: the single switch for REA in DeepSeek Harness.
+#
+# Applied only while this package is listed in the profile's
+# `dsh.profile.bundles`, so the plugin switch in the plugin manager controls
+# BOTH rows below:
+#
+#   rea-agents     : this package's host half (pins and installs rea-agents)
+#   rea-agents-mcp : the MCP server, started from the pinned copy
+#
+# The two rows are one switch on purpose. A tools-only switch would leave REA
+# reachable while its version bookkeeping is gone, and a bookkeeping-only
+# switch would leave the page describing a server that is not running.
+#
+# The MCP row starts `lib/rea-mcp.mjs` instead of `npx -y rea-agents@latest`.
+# That file resolves the copy installed inside this profile, so a harness start
+# never downloads or executes a newly published release: the version can only
+# move through the REA page's Update button. See lib/rea-mcp.mjs for the full
+# reasoning, including why PATH is deliberately not consulted.
+#
+# `command` is the runtime already running the harness rather than a `node`
+# looked up on PATH, and the launcher path is computed from the harness home
+# rather than hardcoded. Both matter because the MCP child is spawned with a
+# scrubbed environment in which `DSH_*` names are removed: the path must be an
+# expression evaluated here, in the host, not something read from the child.
+# `ELECTRON_RUN_AS_NODE` makes the desktop build's executable behave as Node;
+# a CLI harness running under plain Node ignores it.
+#
+# The launcher receives the profile directory as its first argument and `mcp`
+# as its second. The profile is stated rather than discovered because a `file:`
+# or `link:` install is a symlink, and Node resolves `import.meta.url` through
+# symlinks to the real source location — a launcher searching upward from
+# itself would look beside the plugin's checkout instead of beside the pin.
+# `mcp` is REA's own subcommand: without it the CLI only prints its help.
+#
+# The entry id is `rea-agents-mcp` rather than the shorter `rea-mcp` that other
+# REA integrations have used. A profile that once registered REA by hand can
+# hold a `- id: rea-mcp` / `disabled: true` override in its own patch layer,
+# and that override would silently disable this row while leaving the page
+# working — the one failure mode that looks like success. A distinct id keeps
+# the two independent; an old hand-written entry is simply inert.
+#
+# Engine paths are NOT hardcoded and NOT installed here. The MCP server
+# inherits the harness environment, so export whatever REA documents
+# (GHIDRA_INSTALL_DIR, JAVA_HOME, REA_JADX_MCP_JAR, REA_APKTOOL_COMMAND,
+# REA_ADB_PATH) before starting DSH. A missing engine makes only its own tools
+# report provider_unavailable; the rest stay usable.
+- insert:
+    - id: rea-agents
+      name: 'dsh-rea-agents'
+
+    - id: rea-agents-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: rea
+        transport: stdio
+        command: !!js "process.execPath"
+        args: !!js "(() => { const profile = process.env.DSH_PROFILE_DIR || ctx.dshHomePath('profiles', process.env.DSH_PROFILE || 'desktop'); return [profile + '/node_modules/dsh-rea-agents/lib/rea-mcp.mjs', profile, 'mcp']; })()"
+        env:
+          ELECTRON_RUN_AS_NODE: '1'
+        failOnStartupError: false

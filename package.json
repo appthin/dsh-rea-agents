@@ -1,0 +1,78 @@
+{
+  "name": "dsh-rea-agents",
+  "version": "1.0.4",
+  "description": "Pinned-version REA for DeepSeek Harness: installs rea-agents locally, starts its MCP server from that pinned copy, and upgrades only when you press Update.",
+  "license": "MIT",
+  "author": "appthin (https://github.com/appthin)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/appthin/dsh-rea-agents.git"
+  },
+  "homepage": "https://github.com/appthin/dsh-rea-agents#readme",
+  "bugs": {
+    "url": "https://github.com/appthin/dsh-rea-agents/issues"
+  },
+  "icon": "./icon.svg",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "CHANGELOG.en.md",
+    "screenshots.json",
+    "screenshot*.jpg",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/run.mjs",
+    "test:discovery": "node test/discovery.mjs",
+    "test:compose": "node test/compose-check.mjs",
+    "test:render": "node test/render.mjs",
+    "test:dict": "node test/dictionary.mjs",
+    "test:docs": "node test/docs.mjs"
+  },
+  "keywords": [
+    "deepseek",
+    "harness",
+    "dsh",
+    "dsh-plugin",
+    "rea",
+    "reverse-engineering",
+    "mcp",
+    "ghidra",
+    "jadx",
+    "apktool"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.1.6-alpha.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  }
+}

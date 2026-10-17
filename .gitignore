@@ -1,0 +1,53 @@
+# 排除以 . 开头的目录（除 .gitignore 自身外）
+/.*
+!/.gitignore
+!/.git/
+
+# 排除以 _ 开头的目录
+/_*/
+
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build outputs
+/dist/
+/dist-ssr/
+
+# editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.txt
+
+# Redis
+dump.rdb
+
+# env
+.env
+.env.local
+.env.*.local
+
+# npm auth token (never commit)
+.npmrc
+
+# typescript
+*.tsbuildinfo
+
+TODO.md

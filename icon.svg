@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" role="img" aria-label="REA" fill="none" stroke="#247bbf" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <!-- A magnifier over three binary rows: inspection of a shipped artifact. -->
+  <!--
+    The colour is written literally rather than as `currentColor`. The plugin
+    manager renders this file through an `<img>`, and an image loaded that way
+    inherits nothing from the page — `currentColor` resolves against the SVG's
+    own defaults, which is why the glyph showed up black. A literal blue is the
+    only spelling that survives that boundary.
+  -->
+  <circle cx="10.5" cy="10.5" r="6.5" />
+  <line x1="15.4" y1="15.4" x2="21" y2="21" />
+  <line x1="7.4" y1="8.6" x2="9.4" y2="8.6" />
+  <line x1="11.6" y1="8.6" x2="13.6" y2="8.6" />
+  <line x1="7.4" y1="11.4" x2="10.4" y2="11.4" />
+  <line x1="12.6" y1="11.4" x2="13.6" y2="11.4" />
+</svg>
