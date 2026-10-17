@@ -72,6 +72,15 @@ dsh plugin --profile web add file:D:/path/to/dsh-rea-agents
 3. 打开 `http://127.0.0.1:<你的端口>/rea-agents/diagnose`，按输出判断卡在哪一步（见下节）；
 4. 仍无法解决时，附上 `/diagnose` 输出[提交 issue](../../issues/new)。
 
+#### 确认 REA 真的接上了
+
+卡片上有版本号，只说明插件在跑，**不说明 MCP 这条链路通了**。想确认工具真的可用，把下面这句交给 DSH 里的助手：
+
+> 列出你的 `mcp__rea__` 工具，调用 `mcp__rea__binary_session`，参数为空 `{}`，看看返回什么。
+
+助手能列出一批 `mcp__rea__` 开头的工具，并且 `binary_session` 返回一份会话信息
+（而不是「没有这个工具」），就说明 REA 的工具已经注册到模型侧了。
+
 ### 更新与卸载
 
 ```sh

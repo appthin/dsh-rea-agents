@@ -83,6 +83,17 @@ it does not, work through these in order:
 3. Open `http://127.0.0.1:<your port>/rea-agents/diagnose` and read where it stopped (next section).
 4. If it still does not work, [open an issue](../../issues/new) with the `/diagnose` output.
 
+#### Confirming REA is actually connected
+
+A version on the card only proves the plugin is running; it does **not** prove the MCP link is up. To
+confirm the tools really are usable, hand this to the assistant in DSH:
+
+> List your `mcp__rea__` tools, then call `mcp__rea__binary_session` with an empty `{}` and show me what
+> it returns.
+
+If the assistant can list a set of `mcp__rea__` tools and `binary_session` comes back with a session
+description rather than "no such tool", REA's tools are registered with the model.
+
 ### Updating and uninstalling
 
 ```sh
