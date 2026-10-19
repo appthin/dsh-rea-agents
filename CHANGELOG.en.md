@@ -6,6 +6,25 @@ Every notable change to this plugin is recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the version numbers follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.6] - 2026-10-19
+
+### Fixed
+
+- **After a successful update the card kept showing the old version until it was refreshed by
+  hand.** The card delegated its refresh entirely to the state carried inside the action's reply.
+  An install can take close to a minute, and that one reply is losable — a cut connection, a
+  reloaded page, a request the shell gives up on — so **the work finished on disk while the page
+  still displayed the previous version**.
+
+  Every action now **re-reads the state from disk** afterwards (`/state` reads the installed
+  manifest out of `node_modules` each time) and reports the outcome from that. The action's own
+  reply is used only for what the disk cannot answer: the log, and the reason for a refusal.
+
+- **A lost reply must not report completed work as a failure.** When the re-read shows the version
+  really moved, the card says so — "Updated from A to B" — and notes that this was read back from
+  disk; only when nothing moved is the request's failure the story. Neither case lets the card
+  show something untrue.
+
 ## [1.0.5] - 2026-10-19
 
 ### Fixed
@@ -173,6 +192,7 @@ First release.
 - All engines are yours to provide: the plugin installs no Ghidra, IDA, jadx, apktool, adb or any other
   analysis engine.
 
+[1.0.6]: ../../compare/v1.0.5...v1.0.6
 [1.0.5]: ../../compare/v1.0.4...v1.0.5
 [1.0.4]: ../../compare/v1.0.3...v1.0.4
 [1.0.3]: ../../compare/v1.0.2...v1.0.3

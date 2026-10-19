@@ -338,6 +338,160 @@ await check('prefers the framework translator when one is handed down', async ()
   assert.match(joined, /FRAMEWORK\(loading\)/u, `the loading copy must come from the seat, got: ${joined}`)
 })
 
+/** Every host `button` in a rendered tree, in document order. */
+function buttonsOf(node, out = []) {
+  if (node === null || node === undefined || typeof node === 'string') return out
+  if (node.type === 'button') out.push(node)
+  for (const child of node.children ?? []) buttonsOf(child, out)
+  return out
+}
+
+/**
+ * Answer each route from a map, so one render can drive several endpoints.
+ *
+ * A route's value may be a function, called per request. That is how a test
+ * models the disk: `/state` answers with whatever the "disk" currently holds, so
+ * a refresh after an action can be shown to observe the change rather than be
+ * handed a fixture that agrees with it.
+ */
+function answerRoutes(routes) {
+  globalThis.fetch = url => {
+    const key = Object.keys(routes).find(candidate => String(url).startsWith(candidate))
+    const entry = routes[key]
+    if (entry === undefined) return Promise.reject(new Error(`unexpected fetch: ${url}`))
+    try {
+      const payload = typeof entry === 'function' ? entry() : entry
+      if (payload instanceof Error) return Promise.reject(payload)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(payload) })
+    } catch (error) {
+      return Promise.reject(error)
+    }
+  }
+}
+
+await check('reports a successful update and shows the version it landed on', async () => {
+  // The user-visible acceptance test: press Update, and the section must say it
+  // succeeded AND show the new version without a manual refresh.
+  setLocale('en')
+  let disk = { ...statePayload, latestKnown: '6.7.0' }
+  const after = {
+    ...statePayload,
+    latestKnown: '6.7.0',
+    declared: '6.7.0',
+    pinned: '6.7.0',
+    installed: { ...statePayload.installed, version: '6.7.0' },
+  }
+  answerRoutes({
+    '/rea-agents/state': () => disk,
+    '/rea-agents/update': () => {
+      disk = after
+      return { ok: true, log: 'dependencies:\n+ rea-agents 6.7.0', exempted: [], state: after }
+    },
+  })
+
+  hooks.length = 0
+  const first = await settle(entry({ view: 'page' }))
+  assert.match(first.passes.join(' | '), /6\.5\.0/u, 'the section should start on 6.5.0')
+
+  const update = buttonsOf(first.tree).find(button => /Update to 6\.7\.0/u.test(textsOf(button).join(' ')))
+  assert.ok(update, 'the update control must be offered before the update')
+
+  update.props.onClick()
+  await new Promise(resolve => setImmediate(resolve))
+
+  const second = await settle(entry({ view: 'page' }))
+  const joined = second.passes.join(' | ')
+  assert.match(joined, /Updated from 6\.5\.0 to 6\.7\.0/u, `expected a success notice, got: ${joined}`)
+  assert.match(joined, /Current version 6\.7\.0/u, `expected the new version to be shown, got: ${joined}`)
+})
+
+await check('shows the version on disk even when the update reply is lost', async () => {
+  // The failure that made the card need a manual refresh: the install completed
+  // on disk while the reply never arrived, so a card that trusted the reply kept
+  // showing the old version. The refresh must come from `/state`, and the
+  // outcome must be read from the disk rather than from the lost request.
+  setLocale('en')
+  let disk = { ...statePayload, latestKnown: '6.7.0' }
+  const after = {
+    ...statePayload,
+    latestKnown: '6.7.0',
+    pinned: '6.7.0',
+    installed: { ...statePayload.installed, version: '6.7.0' },
+  }
+  answerRoutes({
+    '/rea-agents/state': () => disk,
+    '/rea-agents/update': () => {
+      disk = after
+      return new Error('connection reset')
+    },
+  })
+
+  hooks.length = 0
+  const first = await settle(entry({ view: 'page' }))
+  const update = buttonsOf(first.tree).find(button => /Update to 6\.7\.0/u.test(textsOf(button).join(' ')))
+  assert.ok(update, 'the update control must be offered')
+  update.props.onClick()
+  await new Promise(resolve => setImmediate(resolve))
+
+  const joined = (await settle(entry({ view: 'page' }))).passes.join(' | ')
+  assert.match(joined, /Current version 6\.7\.0/u, `the card must follow the disk, got: ${joined}`)
+  // Reporting only the failed request would deny work that actually finished.
+  assert.match(joined, /Updated from 6\.5\.0 to 6\.7\.0/u, `the moved version must be reported, got: ${joined}`)
+  assert.match(joined, /read back from the version on disk/u, `the loss must be disclosed, got: ${joined}`)
+})
+
+await check('still reports the failure when a lost reply changed nothing', async () => {
+  // The other half of the rule above: a lost reply is not evidence of success.
+  // With the version unmoved, the request's failure is the only true story.
+  setLocale('en')
+  const disk = { ...statePayload, latestKnown: '6.7.0' }
+  answerRoutes({
+    '/rea-agents/state': () => disk,
+    '/rea-agents/update': () => new Error('connection reset'),
+  })
+
+  hooks.length = 0
+  const first = await settle(entry({ view: 'page' }))
+  const update = buttonsOf(first.tree).find(button => /Update to 6\.7\.0/u.test(textsOf(button).join(' ')))
+  assert.ok(update, 'the update control must be offered')
+  update.props.onClick()
+  await new Promise(resolve => setImmediate(resolve))
+
+  const joined = (await settle(entry({ view: 'page' }))).passes.join(' | ')
+  assert.match(joined, /connection reset/u, `the failure must be reported, got: ${joined}`)
+  assert.match(joined, /Current version 6\.5\.0/u, `nothing moved, so 6.5.0 stands, got: ${joined}`)
+  assert.doesNotMatch(joined, /Updated from/u, `no success may be claimed, got: ${joined}`)
+})
+
+await check('says which entries it had to exempt when an update needed that', async () => {
+  setLocale('en')
+  let disk = { ...statePayload, latestKnown: '6.7.0' }
+  const after = {
+    ...statePayload,
+    latestKnown: '6.7.0',
+    pinned: '6.7.0',
+    installed: { ...statePayload.installed, version: '6.7.0' },
+  }
+  answerRoutes({
+    '/rea-agents/state': () => disk,
+    '/rea-agents/update': () => {
+      disk = after
+      return { ok: true, log: 'retried', exempted: ['dshmarket@1.66.36'], state: after }
+    },
+  })
+
+  hooks.length = 0
+  const first = await settle(entry({ view: 'page' }))
+  const update = buttonsOf(first.tree).find(button => /Update to 6\.7\.0/u.test(textsOf(button).join(' ')))
+  assert.ok(update, 'the update control must be offered')
+  update.props.onClick()
+  await new Promise(resolve => setImmediate(resolve))
+
+  const joined = (await settle(entry({ view: 'page' }))).passes.join(' | ')
+  assert.match(joined, /dshmarket@1\.66\.36/u, `the exemption must be named, got: ${joined}`)
+  assert.match(joined, /6\.7\.0/u, `the landed version must be shown, got: ${joined}`)
+})
+
 if (failures.length > 0) {
   process.stdout.write(`\n${failures.length} failing\n`)
   process.exit(1)
