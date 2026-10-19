@@ -143,6 +143,23 @@ plainly: **before** you press, on the card, and again afterwards if it happens:
 This is not a failure to work around. A plugin that quietly bypassed the waiting period would be
 trading the guarantee that pinning was supposed to provide for the appearance of being up to date.
 
+### An unrelated package must not hold REA hostage
+
+pnpm verifies the **whole lockfile** before changing anything, so if **any** entry in the profile has
+not finished its waiting period, **every** pnpm operation is refused — even when that package has
+nothing to do with REA. (That is exactly how it failed in the field: a fresh `dshmarket` release
+blocked updating REA.) The plugin:
+
+1. parses the entries pnpm itself names as offending;
+2. retries once, exempting only those, with `--config.minimum-release-age-exclude`;
+3. says on the page which entries were exempted when an update needed that.
+
+**It never exempts REA itself.** If the REA version you asked for is too new, the update stays failed
+and explains why — exempting it would quietly cancel the very waiting period you rely on. That is
+deliberate.
+
+The exempted entries are **not themselves changed**; they simply stop blocking this one operation.
+
 ## Bringing your own engines
 
 This plugin installs **no analysis engine**, exactly like REA itself. REA is an adapter: a missing

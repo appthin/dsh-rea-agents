@@ -323,6 +323,21 @@ await check('renders the failure line in Chinese for a Chinese interface', async
   assert.match(joined, /重试/u, `expected a retry control, got: ${joined}`)
 })
 
+await check('prefers the framework translator when one is handed down', async () => {
+  // This is the path production actually takes: the shell synthesizes `t` from
+  // the declared namespace and re-derives it on a locale switch. Every check
+  // above runs through the dictionary fallback, so without this one the seat the
+  // section really uses would go untested.
+  setLocale('en')
+  answerWith(statePayload)
+  hooks.length = 0
+  const marker = key => `FRAMEWORK(${key})`
+  const { passes } = await settle(entry({ view: 'page', t: marker }))
+  const joined = passes.join(' | ')
+  assert.match(joined, /FRAMEWORK\(sectionTitle\)/u, `the framework seat must win, got: ${joined}`)
+  assert.match(joined, /FRAMEWORK\(loading\)/u, `the loading copy must come from the seat, got: ${joined}`)
+})
+
 if (failures.length > 0) {
   process.stdout.write(`\n${failures.length} failing\n`)
   process.exit(1)

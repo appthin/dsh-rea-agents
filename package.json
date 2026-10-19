@@ -1,6 +1,6 @@
 {
   "name": "dsh-rea-agents",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Pinned-version REA for DeepSeek Harness: installs rea-agents locally, starts its MCP server from that pinned copy, and upgrades only when you press Update.",
   "license": "MIT",
   "author": "appthin (https://github.com/appthin)",

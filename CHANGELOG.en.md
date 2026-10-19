@@ -6,6 +6,50 @@ Every notable change to this plugin is recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the version numbers follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.5] - 2026-10-19
+
+### Fixed
+
+- **The section did not follow a language switch, and a restart did not help either.** The previous
+  release read the right field (`active`) but still never made React re-render: it subscribed to
+  locale changes and mutated a closed-over variable, so the value changed and the picture did not.
+  It now uses the mechanism the shell provides: this half's zh/en dictionaries are registered as a
+  namespace (`locale.register`), the slot registration declares that `locale` seat, and the shell
+  synthesizes `t` into props — re-deriving it on a locale change, which redraws the section. When no
+  locale service is available the fallback is the **browser's own language**, not a hardcoded `'en'`.
+
+- **"Update" was deadlocked by an unrelated dependency**
+  (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`). Measured, not guessed: pnpm verifies the **whole
+  lockfile** before changing anything, so any entry in the profile that has not finished its
+  supply-chain waiting period blocks every operation — in the field, `dshmarket@1.66.36`, which has
+  nothing to do with REA. Three changes:
+
+  1. **No more `remove` first.** Measured on pnpm 11.28.5 and 12.4.1,
+     `add <pkg>@<ver> --save-exact` replaces the version in place and records it in both the manifest
+     and the lockfile — the "re-adding may be a no-op" worry that justified the removal was wrong, and
+     the step only added a second way to fail.
+  2. **One retry with a targeted exemption.** The offending entries are parsed out of pnpm's own
+     message and exempted with `--config.minimum-release-age-exclude=<name>@<version>`.
+  3. **The package being installed is never exempted.** If REA's own target is too new the run stays
+     failed and says so; exempting it would quietly cancel the waiting period the user relies on.
+
+- **The parse has to tolerate a line wrap.** pnpm wraps to the terminal width and splits `within` from
+  `the minimumReleaseAge cutoff` across two lines — exactly the shape the field report arrived in.
+  A parser that assumed a space would find no offender, and the retry would silently never happen.
+
+### Added
+
+- `test/pnpm-stub.mjs`: a stand-in for pnpm that lets the suite drive the real install paths and
+  inspect the command line the plugin builds — including the retry flags — with no network and no
+  package manager.
+- Four host cases: in-place update (and never calling `remove`), targeted-exemption retry on an
+  unrelated offence, **no** exemption when the target itself is the offender, and a rule that
+  unparsable text must never become a command-line flag.
+- One render case: the framework-supplied `t` must win. That is the path production actually takes,
+  and until now every case exercised only the dictionary fallback.
+- The page now states which entries were exempted when an update needed that, instead of presenting a
+  run that needed a workaround as an ordinary install.
+
 ## [1.0.4] - 2026-10-18
 
 ### Fixed
@@ -129,6 +173,7 @@ First release.
 - All engines are yours to provide: the plugin installs no Ghidra, IDA, jadx, apktool, adb or any other
   analysis engine.
 
+[1.0.5]: ../../compare/v1.0.4...v1.0.5
 [1.0.4]: ../../compare/v1.0.3...v1.0.4
 [1.0.3]: ../../compare/v1.0.2...v1.0.3
 [1.0.2]: ../../compare/v1.0.1...v1.0.2

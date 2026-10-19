@@ -16,6 +16,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
+import { fileURLToPath } from 'node:url'
 
 const plugin = await import('../lib/index.js')
 
@@ -95,6 +96,64 @@ function mount(dir) {
     return { status, body: text === '' ? undefined : JSON.parse(text) }
   }
   return { call, effects }
+}
+
+/**
+ * The refusal the field reported, reproduced verbatim — including the line wrap
+ * between "within" and "the minimumReleaseAge cutoff", which is where pnpm puts
+ * a newline when it wraps to the terminal width. A parser that assumed a space
+ * there would find no offender and the retry would silently never happen.
+ */
+const POLICY_REFUSAL = [
+  '? Verifying lockfile against supply-chain policies (14 entries)...',
+  '\u2717 Lockfile failed supply-chain policy check (14 entries in 367ms)',
+  'Lockfile is up to date, resolution step is skipped',
+  '',
+  'Error: ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION',
+  '',
+  '  \u00d7 adding a new package',
+  '  \u2570\u2500\u25b6 1 lockfile entries failed verification:',
+  '        dshmarket@1.66.36 was published at 2026-10-17T17:27:43.260Z, within',
+  '      the minimumReleaseAge cutoff (2026-10-17T15:59:14.664Z)',
+  '',
+].join('\n')
+
+/** A refusal naming the package the plugin is itself installing. */
+const TARGET_REFUSAL = [
+  'Error: ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION',
+  '',
+  '  \u00d7 adding a new package',
+  '  \u2570\u2500\u25b6 1 lockfile entries failed verification:',
+  '        rea-agents@6.7.0 was published at 2026-10-18T08:12:00.000Z, within',
+  '      the minimumReleaseAge cutoff (2026-10-18T09:00:00.000Z)',
+  '',
+].join('\n')
+
+/**
+ * Install a stub pnpm for one profile and point the plugin at it.
+ *
+ * The plugin resolves its command through `DSH_PNPM_PATH`, which is also the
+ * documented override, so the suite drives the real code path — including the
+ * argument vector it builds — rather than a mock of it.
+ *
+ * @param dir - the profile directory.
+ * @param replies - in-order answers, see test/pnpm-stub.mjs.
+ * @returns the stub's state directory, for reading back the invocations.
+ */
+async function makeStub(dir, replies) {
+  const stateDir = join(dir, 'stub')
+  await mkdir(stateDir, { recursive: true })
+  await writeFile(join(stateDir, 'responses.json'), `${JSON.stringify(replies)}\n`, 'utf8')
+  await writeFile(join(stateDir, 'calls.jsonl'), '', 'utf8')
+  process.env.DSH_PNPM_PATH = fileURLToPath(new URL('./pnpm-stub.mjs', import.meta.url))
+  process.env.REA_STUB_DIR = stateDir
+  return stateDir
+}
+
+/** Every invocation the stub recorded, in order. */
+async function stubCalls(stateDir) {
+  const text = await readFile(join(stateDir, 'calls.jsonl'), 'utf8')
+  return text.split('\n').filter(line => line.trim() !== '').map(line => JSON.parse(line))
 }
 
 process.stdout.write('dsh-rea-agents\n')
@@ -421,6 +480,98 @@ await test('the browser half renders its section for its own bundle', async () =
   const result = spawnSync(process.execPath, [harness], { encoding: 'utf8', timeout: 60_000 })
   assert.equal(result.status, 0, `render harness failed:\n${result.stdout}${result.stderr}`)
   assert.match(result.stdout, /all passing/u)
+})
+
+await test('an update moves the version in place, without removing first', async () => {
+  // The update path used to remove the old copy and then add the new one. It is
+  // now a single `add`, which is both fewer commands and one less way to fail.
+  const dir = await makeProfile()
+  const stub = await makeStub(dir, [
+    { code: 0, stdout: 'dependencies:\n+ rea-agents 6.7.0\n', install: { version: '6.7.0' } },
+  ])
+  try {
+    const { call } = mount(dir)
+    const answer = await call('/update', { version: '6.7.0' }, 'POST')
+    assert.equal(answer.body.ok, true, `update failed: ${answer.body.reason}`)
+    assert.equal(answer.body.state.installed.version, '6.7.0')
+    const calls = await stubCalls(stub)
+    assert.equal(calls.length, 1, `expected exactly one pnpm run, saw ${calls.length}`)
+    assert.deepEqual(calls[0].argv.slice(0, 3), ['add', 'rea-agents@6.7.0', '--save-exact'])
+    assert.ok(!calls.some(c => c.argv.includes('remove')), 'the update must not remove first')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+await test('a policy refusal on an unrelated package is retried with a targeted exemption', async () => {
+  // The exact refusal the field reported: pnpm validates the whole lockfile, so
+  // an unrelated, too-new dependency blocks moving REA. The retry must name that
+  // package and nothing else.
+  const dir = await makeProfile()
+  const stub = await makeStub(dir, [
+    { code: 1, stderr: POLICY_REFUSAL },
+    { code: 0, stdout: 'dependencies:\n+ rea-agents 6.7.0\n', install: { version: '6.7.0' } },
+  ])
+  try {
+    const { call } = mount(dir)
+    const answer = await call('/update', { version: '6.7.0' }, 'POST')
+    assert.equal(answer.body.ok, true, `update failed: ${answer.body.reason}`)
+    assert.equal(answer.body.state.installed.version, '6.7.0')
+    const calls = await stubCalls(stub)
+    assert.equal(calls.length, 2, `expected a single retry, saw ${calls.length} runs`)
+    assert.ok(
+      !calls[0].argv.some(a => a.startsWith('--config.minimum-release-age-exclude=')),
+      'the first attempt must not pre-emptively exempt anything',
+    )
+    assert.ok(
+      calls[1].argv.includes('--config.minimum-release-age-exclude=dshmarket@1.66.36'),
+      `the retry must exempt the offending entry, got: ${calls[1].argv.join(' ')}`,
+    )
+    assert.deepEqual(answer.body.exempted, ['dshmarket@1.66.36'])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+await test('the package being installed is never exempted from the waiting period', async () => {
+  // Exempting the target would quietly undo the supply-chain policy this plugin
+  // exists to respect, so the run must stay failed and say why.
+  const dir = await makeProfile()
+  const stub = await makeStub(dir, [{ code: 1, stderr: TARGET_REFUSAL }])
+  try {
+    const { call } = mount(dir)
+    const answer = await call('/update', { version: '6.7.0' }, 'POST')
+    assert.equal(answer.body.ok, false)
+    assert.match(answer.body.reason, /published too recently/u)
+    const calls = await stubCalls(stub)
+    assert.equal(calls.length, 1, 'a target-only refusal must not be retried')
+    assert.deepEqual(answer.body.offenders, ['rea-agents@6.7.0'])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+await test('an unparsable refusal never becomes a command-line flag', async () => {
+  // The exempt flag is built from pnpm's own words. If pnpm reformats its
+  // message, the safe outcome is no retry — not a flag invented from prose.
+  const dir = await makeProfile()
+  const stub = await makeStub(dir, [
+    { code: 1, stderr: 'Error: ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION\n\n  something unexpected\n' },
+  ])
+  try {
+    const { call } = mount(dir)
+    const answer = await call('/update', { version: '6.7.0' }, 'POST')
+    assert.equal(answer.body.ok, false)
+    assert.deepEqual(answer.body.offenders ?? [], [])
+    const calls = await stubCalls(stub)
+    assert.equal(calls.length, 1, 'nothing to exempt means nothing to retry')
+    assert.ok(
+      !calls.some(c => c.argv.some(a => a.startsWith('--config.minimum-release-age-exclude='))),
+      'no exemption flag may be derived from unparsable text',
+    )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })
 
 if (failures.length > 0) {
