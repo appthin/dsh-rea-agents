@@ -6,6 +6,24 @@ Every notable change to this plugin is recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the version numbers follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.7] - 2026-10-19
+
+### Added
+
+- **A language picker in the section's corner: Follow interface / 中文 / English.** "Follow
+  interface" is the default and keeps the previous behaviour; picking Chinese or English pins **this
+  section only**, independent of the interface, and the choice is remembered in the browser across
+  reloads.
+
+  Why it earns its place: the section should not be able to follow only the interface. You may prefer
+  a Chinese interface while sharing English screenshots, or the reverse. The picker affects this
+  section and **does not touch DSH's own language setting**.
+
+### Changed
+
+- The README's description of Update still said "remove the old copy, then install the new one". That
+  stopped being true in 1.0.5; it now describes the in-place move (one `pnpm add`).
+
 ## [1.0.6] - 2026-10-19
 
 ### Fixed
@@ -192,6 +210,7 @@ First release.
 - All engines are yours to provide: the plugin installs no Ghidra, IDA, jadx, apktool, adb or any other
   analysis engine.
 
+[1.0.7]: ../../compare/v1.0.6...v1.0.7
 [1.0.6]: ../../compare/v1.0.5...v1.0.6
 [1.0.5]: ../../compare/v1.0.4...v1.0.5
 [1.0.4]: ../../compare/v1.0.3...v1.0.4

@@ -127,15 +127,30 @@ async function settle(element) {
 // ---- Load the bundle --------------------------------------------------------
 
 let definition
+/**
+ * A stand-in for `localStorage`, so the language preference can be observed.
+ *
+ * The plugin persists the manual choice here, and a test that could not read it
+ * back could not tell "remembered" from "applied by luck for one render".
+ */
+const store = new Map()
 const fakeWindow = {
   __ModuleLoader__: { load(d) { definition = d } },
   confirm: () => true,
+  localStorage: {
+    getItem: key => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => { store.set(key, String(value)) },
+    removeItem: key => { store.delete(key) },
+  },
 }
 const fakeRequire = () => react
 globalThis.document = fakeDocument
 new Function('window', 'require', source)(fakeWindow, fakeRequire)
 
 const exports = definition.factory(fakeRequire)
+
+/** The preference key the plugin writes; asserted so a rename is noticed. */
+const LANG_KEY = 'dsh-rea-agents:lang'
 
 // ---- Slot ledger stub, with its real admission rules -------------------------
 
@@ -260,6 +275,19 @@ await check('every component it renders is defined', async () => {
 /** Any CJK character: in an English section there must be none. */
 const CJK = /[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffef]/u
 
+/**
+ * Remove the language picker's own labels before a CJK scan.
+ *
+ * The picker names each language in that language — "中文" and "English" read the
+ * same whatever the section is set to — so those two characters are correct in
+ * an otherwise-English section. They are a property of the control, not of the
+ * copy, and every such label is listed here explicitly rather than matched by a
+ * loose pattern, so a genuinely untranslated string still fails the scan.
+ */
+function withoutLanguageNames(text) {
+  return text.replaceAll('中文', '').replaceAll('Follow interface', '')
+}
+
 await check('renders entirely in English while English is the active locale', async () => {
   // The strong form of the assertion is "no CJK survives anywhere", not "the
   // heading is English". A section that mixes languages passes the weak form and
@@ -274,7 +302,7 @@ await check('renders entirely in English while English is the active locale', as
   // The installed version must survive into the rendered text: it is what the
   // user reads to know which copy the MCP server will start.
   assert.match(joined, /6\.5\.0/u, `expected the pinned version, got: ${joined}`)
-  assert.doesNotMatch(joined, CJK, `English output contains CJK: ${joined}`)
+  assert.doesNotMatch(withoutLanguageNames(joined), CJK, `English output contains CJK: ${joined}`)
 })
 
 await check('renders entirely in Chinese while Chinese is the active locale', async () => {
@@ -295,7 +323,7 @@ await check('follows a language switch made after it mounted', async () => {
   answerWith(statePayload)
   hooks.length = 0
   const before = (await settle(entry({ view: 'page' }))).passes.join(' | ')
-  assert.doesNotMatch(before, CJK, `expected English before the switch, got: ${before}`)
+  assert.doesNotMatch(withoutLanguageNames(before), CJK, `expected English before the switch, got: ${before}`)
 
   setLocale('zh')
   const after = (await settle(entry({ view: 'page' }))).passes.join(' | ')
@@ -310,7 +338,7 @@ await check('renders the failure line in English, with English punctuation', asy
   const joined = passes.join(' | ')
   assert.match(joined, /Could not load: network down/u, `expected the English failure line, got: ${joined}`)
   assert.match(joined, /Retry/u, `expected a retry control, got: ${joined}`)
-  assert.doesNotMatch(joined, CJK, `English failure output contains CJK: ${joined}`)
+  assert.doesNotMatch(withoutLanguageNames(joined), CJK, `English failure output contains CJK: ${joined}`)
 })
 
 await check('renders the failure line in Chinese for a Chinese interface', async () => {
@@ -343,6 +371,14 @@ function buttonsOf(node, out = []) {
   if (node === null || node === undefined || typeof node === 'string') return out
   if (node.type === 'button') out.push(node)
   for (const child of node.children ?? []) buttonsOf(child, out)
+  return out
+}
+
+/** Every `select` in a rendered tree, in document order. */
+function selectsOf(node, out = []) {
+  if (node === null || node === undefined || typeof node === 'string') return out
+  if (node.type === 'select') out.push(node)
+  for (const child of node.children ?? []) selectsOf(child, out)
   return out
 }
 
@@ -490,6 +526,57 @@ await check('says which entries it had to exempt when an update needed that', as
   const joined = (await settle(entry({ view: 'page' }))).passes.join(' | ')
   assert.match(joined, /dshmarket@1\.66\.36/u, `the exemption must be named, got: ${joined}`)
   assert.match(joined, /6\.7\.0/u, `the landed version must be shown, got: ${joined}`)
+})
+
+await check('offers a manual language choice and honours it over the interface', async () => {
+  // The section is not always read in the language of the interface around it:
+  // someone may run a Chinese shell for their own comfort while sharing
+  // screenshots in English. `auto` is the default and follows the shell; the two
+  // fixed modes pin it, and the choice survives a reload.
+  setLocale('en')
+  answerWith(statePayload)
+  store.clear()
+  hooks.length = 0
+
+  const first = await settle(entry({ view: 'page' }))
+  const picker = selectsOf(first.tree)[0]
+  assert.ok(picker, 'a language control must be rendered')
+  assert.equal(picker.props.value, 'auto', 'the default must follow the interface')
+  const options = picker.children.map(option => option.props.value)
+  assert.deepEqual(options, ['auto', 'zh', 'en'], `expected three modes, got: ${options.join(', ')}`)
+
+  // Pin Chinese while the interface stays English.
+  picker.props.onChange({ target: { value: 'zh' } })
+  await new Promise(resolve => setImmediate(resolve))
+  const zh = (await settle(entry({ view: 'page' }))).passes.join(' | ')
+  assert.match(zh, /REA 版本/u, `a pinned Chinese must win over an English interface, got: ${zh}`)
+  assert.equal(store.get(LANG_KEY), 'zh', 'the choice must be persisted')
+
+  // And English while the interface is Chinese.
+  setLocale('zh')
+  const picker2 = selectsOf((await settle(entry({ view: 'page' }))).tree)[0]
+  picker2.props.onChange({ target: { value: 'en' } })
+  await new Promise(resolve => setImmediate(resolve))
+  const en = (await settle(entry({ view: 'page' }))).passes.join(' | ')
+  assert.match(en, /REA version/u, `a pinned English must win over a Chinese interface, got: ${en}`)
+})
+
+await check('follows the interface again when the choice is set back to auto', async () => {
+  setLocale('zh')
+  answerWith(statePayload)
+  store.clear()
+  hooks.length = 0
+  const picker = selectsOf((await settle(entry({ view: 'page' }))).tree)[0]
+  picker.props.onChange({ target: { value: 'en' } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.match((await settle(entry({ view: 'page' }))).passes.join(' | '), /REA version/u, 'pinned English')
+
+  const back = selectsOf((await settle(entry({ view: 'page' }))).tree)[0]
+  back.props.onChange({ target: { value: 'auto' } })
+  await new Promise(resolve => setImmediate(resolve))
+  const joined = (await settle(entry({ view: 'page' }))).passes.join(' | ')
+  assert.match(joined, /REA 版本/u, `auto must return to the shell's Chinese, got: ${joined}`)
+  assert.equal(store.get(LANG_KEY), 'auto', 'auto must be persisted too')
 })
 
 if (failures.length > 0) {

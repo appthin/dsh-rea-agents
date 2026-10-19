@@ -119,14 +119,19 @@ on brings both back, and changing it needs no restart.
 | --- | --- |
 | **Install** | Installs the version the registry currently offers, **exactly**, and pins it with `--save-exact` |
 | **Check for newer version** | Asks the profile's own registry (`pnpm view`), reusing your registry, proxy and authentication settings |
-| **Update** | Moves to that version: **remove the old copy, then install the new one** (two steps, not atomic) |
+| **Update** | Moves to that version in place — one `pnpm add`, not an uninstall followed by an install |
 | **Uninstall REA** | Removes the pinned copy. REA's tools stop working until you install again |
 | **Refresh** | Re-reads the on-disk state |
 | **Version comparison** | Current, registry latest, profile declaration and Node version, side by side |
-| **Localization** | Chinese / English, following the interface language — Chinese only when the interface is Chinese, English otherwise |
+| **Localization** | A picker in the card's corner sets **Follow interface / 中文 / English** for this section; the choice is remembered in the browser |
+| **After an action** | The state is re-read from disk, so a manual Refresh is not needed to see the new version |
 
 The version on the card is **read back from disk after every action**, so what you see is the copy the
 MCP server will start.
+
+The language picker applies to **this section only** and does not change DSH's own setting: you may
+prefer a Chinese interface while sharing English screenshots, or the reverse. Choosing "Follow
+interface" restores the default behaviour.
 
 ## Why Update may install an older release
 
