@@ -6,6 +6,31 @@ Every notable change to this plugin is recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the version numbers follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.8] - 2026-10-19
+
+### Fixed
+
+- **With DSH set to Chinese, the section set to "Follow interface" rendered English.** This was the
+  third defect in the same place; the first two fixed *which field was read*, this one fixed **the
+  mechanism**, which was wrong from the start.
+
+  1.0.7 expected the shell to hand a translator (`t`) down through props and to re-derive it on a
+  language change. **Measured: that seat is not populated for this slot** — so "Follow interface" got
+  a fixed English fallback, and a fallback by definition never follows the interface. It now does
+  what sibling plugins do and what is demonstrably reliable: the section **reads the language itself
+  and holds it as component state**, so a change re-renders it. Nothing depends on an external
+  injection this project has not verified.
+
+  A missing check let this class of bug through: the suite tested *what language it started in*, but
+  never *whether a change to the shell language redraws the section* — so "the value moved and the
+  picture did not" could pass.
+
+### Added
+
+- A "语言：" / "Language:" label to the left of the language control. It sits beside the section
+  title with nothing else to identify it, so without a label the dropdown is unreadable on its own.
+  The label is translated like everything else.
+
 ## [1.0.7] - 2026-10-19
 
 ### Added
@@ -210,6 +235,7 @@ First release.
 - All engines are yours to provide: the plugin installs no Ghidra, IDA, jadx, apktool, adb or any other
   analysis engine.
 
+[1.0.8]: ../../compare/v1.0.7...v1.0.8
 [1.0.7]: ../../compare/v1.0.6...v1.0.7
 [1.0.6]: ../../compare/v1.0.5...v1.0.6
 [1.0.5]: ../../compare/v1.0.4...v1.0.5

@@ -351,19 +351,54 @@ await check('renders the failure line in Chinese for a Chinese interface', async
   assert.match(joined, /重试/u, `expected a retry control, got: ${joined}`)
 })
 
-await check('prefers the framework translator when one is handed down', async () => {
-  // This is the path production actually takes: the shell synthesizes `t` from
-  // the declared namespace and re-derives it on a locale switch. Every check
-  // above runs through the dictionary fallback, so without this one the seat the
-  // section really uses would go untested.
-  setLocale('en')
+await check('follows the shell locale for auto, not a translator supplied by props', async () => {
+  // The section used to prefer a framework-supplied `t`, on the theory that the
+  // render machinery re-derives it on a locale switch. In the field that seat was
+  // empty for this slot, so "Follow interface" rendered English under a Chinese
+  // interface. A supplied `t` is now ignored in favour of the locale this half
+  // observes — this check pins that decision in place.
+  setLocale('zh')
   answerWith(statePayload)
+  store.clear()
   hooks.length = 0
   const marker = key => `FRAMEWORK(${key})`
   const { passes } = await settle(entry({ view: 'page', t: marker }))
   const joined = passes.join(' | ')
-  assert.match(joined, /FRAMEWORK\(sectionTitle\)/u, `the framework seat must win, got: ${joined}`)
-  assert.match(joined, /FRAMEWORK\(loading\)/u, `the loading copy must come from the seat, got: ${joined}`)
+  assert.match(joined, /REA 版本/u, `auto must follow the shell's Chinese, got: ${joined}`)
+  assert.doesNotMatch(joined, /FRAMEWORK\(/u, `a supplied translator must not be used, got: ${joined}`)
+})
+
+await check('under auto, a change to the shell language redraws the section', async () => {
+  // The reported defect in one line: the interface was switched to Chinese and
+  // the section stayed English. The section must hear the change and re-render.
+  setLocale('en')
+  answerWith(statePayload)
+  store.clear()
+  hooks.length = 0
+  const first = await settle(entry({ view: 'page' }))
+  assert.match(first.passes.join(' | '), /REA version/u, 'starts in English while the shell is English')
+
+  setLocale('zh')
+  await new Promise(resolve => setImmediate(resolve))
+  const joined = (await settle(entry({ view: 'page' }))).passes.join(' | ')
+  assert.match(joined, /REA 版本/u, `the section must follow the shell to Chinese, got: ${joined}`)
+})
+
+await check('labels the language control so it reads on its own', async () => {
+  // The control sits beside the section title with no other explanation, so it
+  // carries its own label.
+  setLocale('en')
+  answerWith(statePayload)
+  store.clear()
+  hooks.length = 0
+  const tree = (await settle(entry({ view: 'page' }))).tree
+  const picker = selectsOf(tree)[0]
+  assert.ok(picker, 'a language control must be rendered')
+  assert.match(textsOf(tree).join(' | '), /Language:/u, 'the label must be rendered')
+
+  setLocale('zh')
+  const zhTree = (await settle(entry({ view: 'page' }))).tree
+  assert.match(textsOf(zhTree).join(' | '), /语言：/u, 'the label must be translated too')
 })
 
 /** Every host `button` in a rendered tree, in document order. */
